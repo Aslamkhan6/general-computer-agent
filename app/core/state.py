@@ -11,17 +11,30 @@ from .enums  import (
 )
 
 
-
 class TaskStep(BaseModel):
     id: str
+
     description: str
 
     status: StepStatus = StepStatus.PENDING
 
     tool_name: str | None = None
 
-    input_data: dict[str, Any] = Field(default_factory=dict)
-    output_data: dict[str, Any] = Field(default_factory=dict)
+    input_data: dict[str, Any] = Field(
+        default_factory=dict
+    )
+
+    expected_state: dict[str, Any] = Field(
+        default_factory=dict
+    )
+
+    output_data: dict[str, Any] = Field(
+        default_factory=dict
+    )
+
+    depends_on: list[str] = Field(
+        default_factory=list
+    )
 
     error: str | None = None
 

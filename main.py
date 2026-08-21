@@ -1,24 +1,26 @@
-from app.tools.filesystem import CreateDirectoryTool
-from app.tools.registry import ToolRegistry
+from app.planner.planner import Planner
 
 
 def main():
-    registry = ToolRegistry()
 
-    registry.register(CreateDirectoryTool())
+    planner = Planner()
 
-    print("Available tools:")
-    for tool in registry.list_tools():
-        print(f"- {tool['name']}: {tool['description']}")
+    goal = "Create a directory called AI-Agent"
 
-    tool = registry.get("create_directory")
+    plan = planner.create_plan(goal)
 
-    result = tool.execute(
-        path="./workspace/test-project"
-    )
+    print("=== TASK PLAN ===")
 
-    print("\nTool result:")
-    print(result)
+    print("Goal:")
+    print(plan.goal)
+
+    print("\nSteps:")
+
+    for step in plan.steps:
+        print(
+            f"{step.id}: "
+            f"{step.description}"
+        )
 
 
 if __name__ == "__main__":
