@@ -1,5 +1,6 @@
 import re
 
+from app.core.exceptions import PlanningError
 from app.core.state import TaskStep
 from .plan import TaskPlan
 
@@ -15,9 +16,10 @@ class Planner:
         )
 
         if not match:
-            raise ValueError(
-                "Could not determine directory name."
+            raise PlanningError(
+                f"Could not determine directory name from goal: '{goal}'"
             )
+
 
         directory_name = match.group(1).strip()
 

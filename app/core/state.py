@@ -80,3 +80,7 @@ class AgentTask(BaseModel):
     final_result: Any = None
 
     error: str | None = None
+
+    def touch(self) -> None:
+        """Update the updated_at timestamp."""
+        self.updated_at = datetime.now(timezone.utc)

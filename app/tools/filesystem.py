@@ -21,7 +21,7 @@ class CreateDirectoryTool(BaseTool):
             directory.mkdir(parents=True, exist_ok=True)
 
             return ActionResult(
-                status="SUCCESS",
+                status=ActionStatus.SUCCESS,
                 output={
                     "path": str(directory.resolve()),
                     "exists": directory.exists(),
@@ -31,6 +31,6 @@ class CreateDirectoryTool(BaseTool):
 
         except Exception as exc:
             return ActionResult(
-                status="FAILED",
+                status=ActionStatus.FAILED,
                 error=str(exc),
-            )
+            )
