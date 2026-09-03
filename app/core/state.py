@@ -52,6 +52,9 @@ class ActionResult(BaseModel):
     error: str | None = None
 
     execution_time: float | None = None
+    tool_name: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
 
 
 class AgentTask(BaseModel):

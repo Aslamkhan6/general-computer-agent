@@ -6,6 +6,7 @@ from app.core.events import Event, EventBus, EventType
 from app.core.state import AgentTask, TaskStep
 from app.observer.base import BaseObserver
 from app.planner.plan import TaskPlan
+from app.recovery.manager import RecoveryEngine
 from app.tools.executor import ToolExecutor
 from app.tools.request import ToolRequest
 from app.verifier.base import BaseVerifier
@@ -19,11 +20,13 @@ class AgentController:
         observer: BaseObserver,
         verifier: BaseVerifier,
         event_bus: EventBus | None = None,
+        recovery_engine: RecoveryEngine | None = None,
     ):
         self.executor = executor
         self.observer = observer
         self.verifier = verifier
         self.event_bus = event_bus
+        self.recovery_engine = recovery_engine or RecoveryEngine()
 
     def _emit(
         self,
@@ -43,13 +46,15 @@ class AgentController:
             )
 
     def run_plan(self, task: AgentTask, plan: TaskPlan) -> AgentTask:
-        """Execute a full task plan step-by-step with observation & verification."""
+        """Execute a full task plan step-by-step with observation, verification & recovery."""
         task.status = TaskStatus.EXECUTING
         task.steps = plan.steps
         task.touch()
         self._emit(EventType.TASK_STARTED, task.id, payload={"goal": plan.goal, "total_steps": len(plan.steps)})
 
-        for step in task.steps:
+        step_idx = 0
+        while step_idx < len(task.steps):
+            step = task.steps[step_idx]
             task.current_step_id = step.id
             step.status = StepStatus.RUNNING
             task.touch()
@@ -78,38 +83,52 @@ class AgentController:
                 payload={"status": execution_result.status, "output": execution_result.output, "error": execution_result.error},
             )
 
-            if execution_result.status != ActionStatus.SUCCESS:
-                step.status = StepStatus.FAILED
-                step.error = execution_result.error or "Tool execution failed."
-                task.status = TaskStatus.FAILED
-                task.error = step.error
-                task.touch()
-                self._emit(EventType.STEP_FAILED, task.id, step.id, payload={"error": step.error})
-                self._emit(EventType.TASK_FAILED, task.id, payload={"error": task.error})
-                return task
-
-            # 2. Observe
+            # 2. Observe & Verify
             observation_path = step.input_data.get("path", "")
             actual_state = self.observer.observe(path=observation_path)
             step.output_data = actual_state
             self._emit(EventType.STEP_OBSERVED, task.id, step.id, payload={"observed_state": actual_state})
 
-            # 3. Verify
-            task.status = TaskStatus.VERIFYING
-            task.touch()
-            verified = self.verifier.verify(
-                expected=step.expected_state,
-                actual=actual_state,
-            )
-            self._emit(EventType.STEP_VERIFIED, task.id, step.id, payload={"verified": verified})
+            verified = False
+            if execution_result.status == ActionStatus.SUCCESS:
+                task.status = TaskStatus.VERIFYING
+                task.touch()
+                verified = self.verifier.verify(expected=step.expected_state, actual=actual_state)
+                self._emit(EventType.STEP_VERIFIED, task.id, step.id, payload={"verified": verified})
 
-            if verified:
+            # Check if step succeeded
+            if execution_result.status == ActionStatus.SUCCESS and verified:
                 step.status = StepStatus.SUCCESS
                 step.completed_at = datetime.now(timezone.utc)
                 self._emit(EventType.STEP_COMPLETED, task.id, step.id)
+                step_idx += 1
+                continue
+
+            # 3. Engage Module 7 Recovery Engine upon failure
+            recovered, rec_res, rec_state, replanned_plan, esc_reason = self.recovery_engine.handle_failure(
+                task_id=task.id,
+                step=step,
+                execution_result=execution_result,
+                actual_state=actual_state,
+                verified=verified,
+                executor=self.executor,
+                observer=self.observer,
+                verifier=self.verifier,
+            )
+
+            if recovered:
+                step.status = StepStatus.SUCCESS
+                step.completed_at = datetime.now(timezone.utc)
+                self._emit(EventType.STEP_COMPLETED, task.id, step.id)
+                step_idx += 1
+            elif replanned_plan:
+                # Insert replanned recovery steps
+                task.steps[step_idx:step_idx+1] = replanned_plan.steps
+                # Loop continues with first inserted step
             else:
+                # Failure unrecoverable
                 step.status = StepStatus.FAILED
-                step.error = "Verification failed: actual state did not match expected state."
+                step.error = esc_reason or execution_result.error or "Step failed and recovery was unrecoverable."
                 task.status = TaskStatus.FAILED
                 task.error = step.error
                 task.touch()
