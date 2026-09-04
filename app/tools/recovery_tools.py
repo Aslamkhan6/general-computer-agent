@@ -19,7 +19,7 @@ class GetRecoveryHistoryTool(BaseTool):
                 records = _recovery_engine.history.get_task_history(task_id)
             else:
                 records = _recovery_engine.history.get_all_records()
-            return ActionResult(status=ActionStatus.SUCCESS, output={"records_count": len(records), "records": [r.dict() for r in records]})
+            return ActionResult(status=ActionStatus.SUCCESS, output={"records_count": len(records), "records": [r.model_dump() for r in records]})
         except Exception as exc:
             return ActionResult(status=ActionStatus.FAILED, error=str(exc))
 

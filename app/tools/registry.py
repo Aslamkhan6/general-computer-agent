@@ -67,6 +67,17 @@ def register_all_default_tools(registry: ToolRegistry) -> None:
     from .recovery_tools import (
         GetRecoveryHistoryTool, GetCircuitBreakerStatusTool, TriggerRollbackTool
     )
+    from .security_tools import (
+        GetSecurityStatusTool, RequestApprovalTool, GetPendingApprovalsTool,
+        GetAuditLogTool, GetPermissionsTool
+    )
+    from .supervisor_tools import (
+        ListAgentsTool, GetAgentStatusTool, GetTaskStatusTool, DispatchTaskTool,
+        GetActiveTasksTool, GetAgentResultsTool
+    )
+    from .ui_tools import (
+        GetUIStateTool, SendUINotificationTool, UpdateRobotStateTool, TriggerUIApprovalTool
+    )
 
     tools = [
         # Filesystem
@@ -97,6 +108,14 @@ def register_all_default_tools(registry: ToolRegistry) -> None:
         GetSessionContextTool(),
         # Recovery & Reliability
         GetRecoveryHistoryTool(), GetCircuitBreakerStatusTool(), TriggerRollbackTool(),
+        # Security & Permissions
+        GetSecurityStatusTool(), RequestApprovalTool(), GetPendingApprovalsTool(),
+        GetAuditLogTool(), GetPermissionsTool(),
+        # Supervisor & Multi-Agent
+        ListAgentsTool(), GetAgentStatusTool(), GetTaskStatusTool(), DispatchTaskTool(),
+        GetActiveTasksTool(), GetAgentResultsTool(),
+        # UI & Command Center
+        GetUIStateTool(), SendUINotificationTool(), UpdateRobotStateTool(), TriggerUIApprovalTool(),
     ]
 
     for tool in tools:

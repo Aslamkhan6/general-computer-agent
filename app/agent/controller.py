@@ -7,6 +7,7 @@ from app.core.state import AgentTask, TaskStep
 from app.observer.base import BaseObserver
 from app.planner.plan import TaskPlan
 from app.recovery.manager import RecoveryEngine
+from app.security.manager import SecurityManager
 from app.tools.executor import ToolExecutor
 from app.tools.request import ToolRequest
 from app.verifier.base import BaseVerifier
@@ -21,12 +22,14 @@ class AgentController:
         verifier: BaseVerifier,
         event_bus: EventBus | None = None,
         recovery_engine: RecoveryEngine | None = None,
+        security_manager: SecurityManager | None = None,
     ):
         self.executor = executor
         self.observer = observer
         self.verifier = verifier
         self.event_bus = event_bus
         self.recovery_engine = recovery_engine or RecoveryEngine()
+        self.security_manager = security_manager or SecurityManager()
 
     def _emit(
         self,
@@ -46,7 +49,7 @@ class AgentController:
             )
 
     def run_plan(self, task: AgentTask, plan: TaskPlan) -> AgentTask:
-        """Execute a full task plan step-by-step with observation, verification & recovery."""
+        """Execute a full task plan step-by-step with authorization, observation, verification & recovery."""
         task.status = TaskStatus.EXECUTING
         task.steps = plan.steps
         task.touch()
@@ -70,7 +73,19 @@ class AgentController:
                 self._emit(EventType.TASK_FAILED, task.id, payload={"error": task.error})
                 return task
 
-            # 1. Execute
+            # 1. Module 8 Security Gate Authorization Check
+            security_decision = self.security_manager.authorize(step.tool_name, step.input_data)
+            if not security_decision.allowed:
+                step.status = StepStatus.FAILED
+                step.error = f"Security Blocked: {security_decision.reason}"
+                task.status = TaskStatus.FAILED
+                task.error = step.error
+                task.touch()
+                self._emit(EventType.STEP_FAILED, task.id, step.id, payload={"error": step.error, "security_decision": security_decision.model_dump()})
+                self._emit(EventType.TASK_FAILED, task.id, payload={"error": task.error})
+                return task
+
+            # 2. Execute Tool
             request = ToolRequest(
                 tool_name=step.tool_name,
                 arguments=step.input_data,
@@ -83,7 +98,7 @@ class AgentController:
                 payload={"status": execution_result.status, "output": execution_result.output, "error": execution_result.error},
             )
 
-            # 2. Observe & Verify
+            # 3. Observe & Verify
             observation_path = step.input_data.get("path", "")
             actual_state = self.observer.observe(path=observation_path)
             step.output_data = actual_state
@@ -104,7 +119,7 @@ class AgentController:
                 step_idx += 1
                 continue
 
-            # 3. Engage Module 7 Recovery Engine upon failure
+            # 4. Engage Module 7 Recovery Engine upon failure
             recovered, rec_res, rec_state, replanned_plan, esc_reason = self.recovery_engine.handle_failure(
                 task_id=task.id,
                 step=step,
